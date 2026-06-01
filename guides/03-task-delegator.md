@@ -8,6 +8,29 @@ gak ngeliat history chat lo. Hasilnya balik sebagai output tool.
 Sub-agent pake **provider dan model yang sama** dengan session utama lo.
 Jadi kalo lo pake `openai-codex` + `gpt-5.5`, sub-agent juga pake itu.
 
+### Cara Kerja
+
+```
+User ──► Main Agent (orchestrator)
+              │
+              ├─ panggil tool: senior_engineer_delegate_task(mode, task)
+              │
+              ▼
+         Pi spawn sub-agent ──► baca file / riset ──► balikin hasil
+              │                                            │
+              └──── hasil masuk ke main agent ─────────────┘
+                                │
+                      Lanjut kerja berdasarkan hasil
+```
+
+Teknisnya:
+1. Extension `task-delegator.ts` register tool `senior_engineer_delegate_task`
+2. Pas dipanggil, extension buka proses `pi -p --no-session --model <model>` baru
+3. Prompt sub-agent dikirim via **stdin** (pipe) — berisi mode, task, dan instruksi
+4. Sub-agent jalan dengan context fresh, bisa baca file/grep bebas
+5. Output stdout ditangkap dan balik sebagai tool result
+6. Main agent terima hasilnya dan lanjut kerja
+
 Ini bedanya sama nanya langsung ke AI:
 - Nanya langsung → context lo makin penuh = lebih mahal + lebih lambat
 - Delegate → sub-agent pake context sendiri = hemat token, lebih fokus

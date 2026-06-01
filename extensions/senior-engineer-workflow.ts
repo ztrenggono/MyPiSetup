@@ -176,9 +176,9 @@ function modeInstruction(state: WorkflowState, memoryPreview: string): string {
       base,
       "Mode: TEACH",
       "Do not edit application code.",
-      "Read project tree, README, docs, config, package files, routes, API, database, tests, and deployment files.",
-      "Identify tech stack, architecture, modules, user flows, commands, deployment notes, and risks.",
-      "Update each memory section using the `senior_engineer_workflow_memory_update` tool.",
+      "DELEGATE exploration to `senior_engineer_delegate_task` — spawn sub-agents to read different parts of the project in parallel.",
+      "Example: delegate one sub-agent to read tech stack, another to read routes/API, another to read database schema.",
+      "Collect all results and update each memory section using `senior_engineer_workflow_memory_update`.",
       "Call the tool separately for each section: Understanding, Tech Stack, Architecture, Commands, Risks.",
       "Also append a task history entry using `senior_engineer_workflow_memory_append`.",
       "Output sections: Project Understanding, Tech Stack, Architecture, Main Modules, User Flows, API or Routes, Database or Storage, Build and Test Commands, Deployment Notes, Known Risks, Memory Updated.",
@@ -212,7 +212,11 @@ function modeInstruction(state: WorkflowState, memoryPreview: string): string {
       base,
       "Mode: FIX",
       `Bug/request: ${request}`,
-      "Find root cause first. Before editing include Root Cause Hypothesis, Files To Inspect, Fix Plan, Risk Analysis, Test Plan. Patch only necessary files. Verify and update memory.",
+      "Find root cause first.",
+      "BEFORE reading any files yourself, DELEGATE research to `senior_engineer_delegate_task` — the sub-agent will read files, trace code, and return findings.",
+      "Use the delegate result as your understanding, then write Root Cause Hypothesis, Files To Inspect, Fix Plan, Risk Analysis, Test Plan.",
+      "This keeps your context focused on editing, not on reading.",
+      "Patch only necessary files. Verify and update memory.",
     ].join("\n");
   }
 
@@ -221,12 +225,14 @@ function modeInstruction(state: WorkflowState, memoryPreview: string): string {
       base,
       "Mode: FEATURE",
       `Feature/request: ${request}`,
-      "Inspect existing patterns first. Identify frontend/backend/database impact. Plan first. Keep patch small. Add validation and error handling. Add/update tests if possible. Explain migrations or breaking changes first.",
+      "DELEGATE research to `senior_engineer_delegate_task` first to inspect existing patterns and identify frontend/backend/database impact.",
+      "Use the delegate result to write your plan.",
+      "Plan first. Keep patch small. Add validation and error handling. Add/update tests if possible. Explain migrations or breaking changes first.",
     ].join("\n");
   }
 
   if (state.mode === "refactor") {
-    return [base, "Mode: REFACTOR", `Request: ${request}`, "Improve structure without behavior change. Do not change API contracts or schema unless requested. Keep patch small and test."].join("\n");
+    return [base, "Mode: REFACTOR", `Request: ${request}`, "DELEGATE refactor analysis to `senior_engineer_delegate_task` first — the sub-agent analyzes code structure and proposes strategy. Use the result to plan your changes. Improve structure without behavior change. Do not change API contracts or schema unless requested. Keep patch small and test."].join("\n");
   }
 
   if (state.mode === "test") {

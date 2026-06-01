@@ -202,18 +202,23 @@ function runPiWithPrompt(
   return new Promise((resolve, reject) => {
     const provider = getDefaultProvider();
     const model = getDefaultModel();
-    const piArgs: string[] = ["-p", "--no-session", "--append-system-prompt", promptPath, "--provider", provider];
+    const piArgs: string[] = ["-p", "--no-session", "--provider", provider];
     if (model) piArgs.push("--model", model);
 
     const invocation = getPiInvocation(piArgs);
     const proc = spawn(invocation.command, invocation.args, {
       cwd,
       shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     });
 
     let stdout = "";
     let stderr = "";
+
+    // Read prompt file and pipe to sub-agent's stdin
+    const promptContent = fs.readFileSync(promptPath, "utf-8");
+    proc.stdin.write(promptContent);
+    proc.stdin.end();
 
     proc.stdout.on("data", (data: Buffer) => {
       stdout += data.toString();

@@ -259,6 +259,58 @@ Kalo bug-nya rumit dan butuh riset, pake delegate dulu:
 
 ---
 
+## How Delegation Works
+
+Task Delegator memungkinkan AI main agent (orchestrator) spawn sub-agent terisolasi.
+
+### Flow
+
+```
+User ──► /command atau task
+              │
+              ▼
+    Main Agent (Codex / orchestrator)
+      │                          
+      ├─ Mode: FIX / FEATURE / AUDIT / REFACTOR
+      │
+      ├─ Instruksi: "DELEGATE research dulu"
+      │
+      ├─ panggil tool: senior_engineer_delegate_task(mode, task)
+      │     │
+      │     ▼
+      │   Pi spawn: pi -p --no-session --model gpt-5.5
+      │     │
+      │     ├─ stdin: [prompt dari extension]
+      │     ├─ sub-agent baca file / riset / analisis
+      │     └─ stdout: [hasil] ────┐
+      │                            │
+      └──── hasil balik ke ────────┘
+        main agent lanjut kerja
+```
+
+### Sub-agent vs Main Agent
+
+| Aspek | Main Agent | Sub-agent |
+|-------|-----------|-----------|
+| Context | Full chat history + project memory | Fresh — cuma tau task yg dikasih |
+| Bisa edit file | ✅ Ya | ❌ Read-only |
+| Provider/Model | Sesuai settings | Sama dengan main agent |
+| Biaya token | Mahal (context besar) | Hemat (context kecil, fokus) |
+
+### Kapan AI Delegate Otomatis
+
+Semenjak update terbaru, mode-mode berikut **WAJIB** delegate sebelum kerja:
+
+| Mode | Perintah di Prompt |
+|------|-------------------|
+| `teach` | "DELEGATE exploration — spawn sub-agents to read different parts in parallel" |
+| `fix` | "BEFORE reading files yourself, DELEGATE research to sub-agent" |
+| `feature` | "DELEGATE research to inspect existing patterns first" |
+| `refactor` | "DELEGATE refactor analysis to sub-agent first" |
+
+Jadi pas lo panggil `/workflow fix "...bug..."`, langkah pertama AI bukan baca file sendiri,
+tapi panggil `senior_engineer_delegate_task`. Sub-agent jalan, balikin hasil, baru AI lanjut.
+
 ## All Extensions Commands Reference
 
 ### Senior Engineer Workflow
