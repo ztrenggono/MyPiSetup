@@ -8,6 +8,15 @@ gak ngeliat history chat lo. Hasilnya balik sebagai output tool.
 Sub-agent pake **provider dan model yang sama** dengan session utama lo.
 Jadi kalo lo pake `openai-codex` + `gpt-5.5`, sub-agent juga pake itu.
 
+### Live Visibility
+
+Pas sub-agent jalan, lo bisa liat langsung:
+1. **Prompt yang dikirim** — task description + mode instructions
+2. **Output real-time** — streaming stdout dari sub-agent
+3. **Hasil final** — output lengkap setelah selesai
+
+Jadi gak perlu nunggu gelap — lo bisa monitor apa yang dikerjain sub-agent saat itu juga.
+
 ### Cara Kerja
 
 ```

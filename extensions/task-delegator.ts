@@ -198,6 +198,7 @@ function runPiWithPrompt(
   _mode: DelegateMode,
   cwd: string,
   signal?: AbortSignal,
+  onUpdate?: (msg: string) => void,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const provider = getDefaultProvider();
@@ -221,7 +222,9 @@ function runPiWithPrompt(
     proc.stdin.end();
 
     proc.stdout.on("data", (data: Buffer) => {
-      stdout += data.toString();
+      const chunk = data.toString();
+      stdout += chunk;
+      onUpdate?.(chunk);
     });
     proc.stderr.on("data", (data: Buffer) => {
       stderr += data.toString();
@@ -379,8 +382,6 @@ export default function (pi: ExtensionAPI) {
         return { content: [{ type: "text" as const, text: "Error: task is required" }], isError: true };
       }
 
-      onUpdate?.({ content: [{ type: "text" as const, text: `Spawning ${mode} sub-agent...` }] });
-
       const agentPrompt = buildAgentPrompt(mode, task);
       const { dir, promptPath } = tmpDirFor(mode, task);
       writePrompt(agentPrompt, promptPath);
@@ -389,8 +390,28 @@ export default function (pi: ExtensionAPI) {
       const cwd = process.cwd();
       activeDelegates.push({ id: delegateId, mode, task, cwd, tmpDir: dir, startedAt: Date.now() });
 
+      const promptHeader = [
+        "━━━ SUB-AGENT PROMPT ━━━",
+        `Mode: ${mode}`,
+        "─── Task ───",
+        task,
+        "",
+        agentPrompt.slice(0, 2000),
+        "━━━ SUB-AGENT OUTPUT ━━━",
+      ].join("\n");
+
+      let accumulatedOutput = "";
+      onUpdate?.({ content: [{ type: "text" as const, text: promptHeader }] });
+
       try {
-        const output = await runPiWithPrompt(promptPath, mode, cwd, signal);
+        const output = await runPiWithPrompt(promptPath, mode, cwd, signal, (chunk) => {
+          accumulatedOutput += chunk;
+          // Keep last 3000 chars for streaming display
+          const tail = accumulatedOutput.length > 3000
+            ? `...[${accumulatedOutput.length - 3000} chars hidden]...\n${accumulatedOutput.slice(-3000)}`
+            : accumulatedOutput;
+          onUpdate?.({ content: [{ type: "text" as const, text: `${promptHeader}\n${tail}` }] });
+        });
         activeDelegates = activeDelegates.filter((d) => d.id !== delegateId);
 
         pi.appendEntry("senior-engineer-delegate-result", {
