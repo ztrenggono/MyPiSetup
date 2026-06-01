@@ -246,6 +246,7 @@ Kalo bug-nya rumit dan butuh riset, pake delegate dulu:
 | Mode | Read-Only? | Kapan Pakai | Contoh Command |
 |------|-----------|-------------|----------------|
 | `teach` | ✅ Ya | Project baru pertama kali, atau project besar yang belum pernah dites AI | `/workflow teach` |
+| `plan` | ✅ Ya | Project greenfield — AI baca docs/PRD/spec, bikin PLAN.md phased breakdown | `/workflow plan "e-commerce app"` |
 | `fix` | ❌ No | Ada bug, perlu fix minimal tanpa ngerusak yang lain | `/workflow fix "login error"` |
 | `feature` | ❌ No | Mau nambah fitur baru — AI planning dulu sebelum implement | `/workflow feature "tambah halaman profile"` |
 | `refactor` | ❌ No | Mau refactor — AI analisis risk dulu sebelum ubah code | `/workflow refactor "pisahin concern"` |
@@ -255,7 +256,7 @@ Kalo bug-nya rumit dan butuh riset, pake delegate dulu:
 | `memory` | ✅ Ya | Mau update project memory (tech stack, architecture, dll) | `/workflow memory "update tech stack"` |
 | `default` | ❌ No | General task — kerja normal tapi tetap terstruktur | Otomatis kalo gak specify mode |
 
-**Read-Only modes** (`teach`, `audit`, `production`, `memory`) = aman. AI cuma baca dan analisis, gak bisa edit file.
+**Read-Only modes** (`teach`, `plan`, `audit`, `production`, `memory`) = aman. AI cuma baca dan analisis, gak bisa edit file.
 
 ---
 

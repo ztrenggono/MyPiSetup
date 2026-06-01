@@ -17,6 +17,7 @@ Ada 9 mode, masing-masing dengan prompt yang ngatur cara AI bertindak.
 | `production` | Mau deploy — AI cek production readiness |
 | `test` | Mau nambah test — AI planning test cases |
 | `memory` | Mau update memory project — AI update otomatis |
+| `plan` | Project greenfield — AI baca docs/PRD/spec, bikin PLAN.md dengan phased breakdown | `/workflow plan "e-commerce app"` |
 | `default` | General — AI kerja normal tapi terstruktur |
 
 ## Step by Step

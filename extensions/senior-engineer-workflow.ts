@@ -18,7 +18,7 @@ import * as os from "node:os";
 const MEMORY_ROOT = path.join(os.homedir(), ".pi", "agent", "memories", "senior-engineer-workflow", "projects");
 const CHECKPOINT_ROOT = path.join(os.homedir(), ".pi", "agent", "checkpoints", "senior-engineer-workflow");
 
-type WorkflowMode = "default" | "teach" | "audit" | "production" | "fix" | "feature" | "refactor" | "test" | "memory";
+type WorkflowMode = "default" | "teach" | "audit" | "production" | "fix" | "feature" | "refactor" | "test" | "memory" | "plan";
 type WorkflowStage = "understand" | "plan" | "implement" | "test" | "review" | "fix" | "verify" | "memory" | "done";
 
 interface WorkflowState {
@@ -125,10 +125,10 @@ function parseArgs(args: string): { mode: WorkflowMode; request: string; readOnl
   if (!trimmed) return { mode: "default", request: "", readOnly: false };
 
   const [first, ...rest] = trimmed.split(/\s+/);
-  const modes: WorkflowMode[] = ["teach", "audit", "production", "fix", "feature", "refactor", "test", "memory"];
+  const modes: WorkflowMode[] = ["teach", "audit", "production", "fix", "feature", "refactor", "test", "memory", "plan"];
   if (modes.includes(first as WorkflowMode)) {
     const mode = first as WorkflowMode;
-    return { mode, request: rest.join(" ").trim(), readOnly: ["teach", "audit", "production", "memory"].includes(mode) };
+    return { mode, request: rest.join(" ").trim(), readOnly: ["teach", "audit", "production", "memory", "plan"].includes(mode) };
   }
   return { mode: "default", request: trimmed, readOnly: false };
 }
@@ -207,11 +207,39 @@ function modeInstruction(state: WorkflowState, memoryPreview: string): string {
     ].join("\n");
   }
 
-  if (state.mode === "fix") {
+  if (state.mode === "plan") {
     return [
       base,
-      "Mode: FIX",
-      `Bug/request: ${request}`,
+      "Mode: PLAN",
+      "Read-only. Only create or update PLAN.md. Do NOT edit any application code.",
+      "This project is greenfield — there are only docs (PRD, tech spec, requirements, Notion exports), no application code yet.",
+      "DELEGATE research to `senior_engineer_delegate_task` to read docs in parallel (one sub-agent per doc or per area).",
+      "Collect all delegate results, then create PLAN.md at project root with:",
+      "",
+      "## PLAN.md Structure",
+      "",
+      "1. **Project Overview** — what we're building, from docs",
+      "2. **Tech Stack Decisions** — framework, database, infra, with rationale",
+      "3. **Architecture Overview** — high-level system design",
+      "4. **Phases** — numbered, each with:",
+      "   - Goal (what this phase delivers)",
+      "   - Files/areas involved",
+      "   - Dependencies on previous phases",
+      "   - Acceptance criteria",
+      "5. **Milestones** — key delivery dates or checkpoints",
+      "6. **Risks & Mitigations**",
+      "",
+      "Rules:",
+      "- Phases must be small enough to execute via /workflow feature individually (1-5 files per phase).",
+      "- First phase must be project scaffold + database schema + CI.",
+      "- Each phase must deliver something testable/demoable.",
+      "- Include all git commands for initializing the project.",
+      "- Write PLAN.md, then update project memory with understanding + plan summary.",
+      "",
+    ].join("\n");
+  }
+
+  if (state.mode === "fix") {
       "Find root cause first.",
       "BEFORE reading any files yourself, DELEGATE research to `senior_engineer_delegate_task` — the sub-agent will read files, trace code, and return findings.",
       "Use the delegate result as your understanding, then write Root Cause Hypothesis, Files To Inspect, Fix Plan, Risk Analysis, Test Plan.",
