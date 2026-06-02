@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 
 const SESSION_DIR = path.join(os.homedir(), ".pi", "agent", "sessions");
+const LAST_SESSION_FILE = path.join(os.homedir(), ".pi", "agent", "last-session.json");
 
 interface SessionEntry {
   id: string;
@@ -17,12 +18,24 @@ interface SessionEntry {
   provider: string;
 }
 
+interface LastSessionData {
+  projectCwd: string;
+  sessionFile: string | undefined;
+  sessionId: string;
+  messageCount: number;
+  timestamp: string;
+}
+
 function slugifyProjectPath(p: string): string {
   return "--" + p.replace(/^\/Users\/[^/]+/, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") + "--";
 }
 
 function projectDir(cwd: string): string {
   return path.join(SESSION_DIR, slugifyProjectPath(cwd));
+}
+
+function projectKey(cwd: string): string {
+  return slugifyProjectPath(cwd).replace(/^--|--$/g, "");
 }
 
 async function parseSessionFile(filePath: string): Promise<SessionEntry | null> {
@@ -98,8 +111,48 @@ function relativeDate(iso: string): string {
   return `${days}d ago`;
 }
 
+function loadLastSessions(): Record<string, LastSessionData> {
+  try {
+    const raw = fsSync.readFileSync(LAST_SESSION_FILE, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function saveLastSession(project: string, data: LastSessionData) {
+  const all = loadLastSessions();
+  all[project] = data;
+  try {
+    fsSync.mkdirSync(path.dirname(LAST_SESSION_FILE), { recursive: true });
+    fsSync.writeFileSync(LAST_SESSION_FILE, JSON.stringify(all, null, 2), "utf-8");
+  } catch {}
+}
+
 export default function (pi: ExtensionAPI) {
-  // ─── Auto-save session on shutdown (Ctrl+C & /quit) ───
+  // ─── On startup: notify if there's a last session ───
+
+  pi.on("session_start", (event, ctx) => {
+    if (event.reason !== "startup") return;
+
+    const pk = projectKey(process.cwd());
+    const last = loadLastSessions()[pk];
+    if (!last || !last.sessionFile) return;
+
+    try {
+      if (!fsSync.existsSync(last.sessionFile)) return;
+    } catch { return; }
+
+    const ago = relativeDate(last.timestamp);
+    ctx.ui.notify(
+      `Ada session sebelumnya (${ago}, ${last.messageCount} pesan).\n` +
+      `Gunakan /resume_last untuk lanjut (history lengkap).\n` +
+      `Atau /fork_last untuk branching dari session terakhir.`,
+      "info"
+    );
+  });
+
+  // ─── On shutdown: save this session as "last" for this project ───
 
   pi.on("session_shutdown", (event, ctx) => {
     const now = new Date();
@@ -123,6 +176,20 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
+      // Save as "last session" for this project
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      const sessionId = ctx.sessionManager.getSessionId();
+      if (sessionFile && reason !== "fork") {
+        saveLastSession(projectKey(process.cwd()), {
+          projectCwd: process.cwd(),
+          sessionFile,
+          sessionId,
+          messageCount: userCount,
+          timestamp: dateStr,
+        });
+      }
+
+      // Write daily summary
       const summary = [
         `## Session ${now.toLocaleString("id-ID")}`,
         `- Reason: ${reason}`,
@@ -132,9 +199,69 @@ export default function (pi: ExtensionAPI) {
         "",
       ].join("\n") + "\n";
 
-      const summaryFile = path.join(summaryDir, `${now.toISOString().split("T")[0]}.md`);
+      const summaryFile = path.join(summaryDir, `${dateStr.split("T")[0]}.md`);
       fsSync.appendFileSync(summaryFile, `\n---\n\n${summary}`, "utf-8");
     } catch {}
+  });
+
+  // ─── /resume_last — switch to last session (full history preserved) ───
+
+  pi.registerCommand("resume_last", {
+    description: "Lanjut session terakhir — history lengkap dari awal.",
+    handler: async (_args, ctx) => {
+      const pk = projectKey(process.cwd());
+      const last = loadLastSessions()[pk];
+      if (!last || !last.sessionFile) {
+        ctx.ui.notify("Tidak ada session sebelumnya untuk project ini.", "warning");
+        return;
+      }
+
+      try {
+        if (!fsSync.existsSync(last.sessionFile)) {
+          ctx.ui.notify("File session sudah tidak ada.", "warning");
+          return;
+        }
+      } catch {
+        ctx.ui.notify("Gagal cek file session.", "error");
+        return;
+      }
+
+      ctx.ui.notify(`Beralih ke session ${last.sessionId.slice(0, 8)} (${last.messageCount} pesan)...\nHistory lengkap akan dimuat ulang.`, "info");
+
+      try {
+        await ctx.switchSession(last.sessionFile);
+      } catch (e) {
+        ctx.ui.notify(`Gagal resume: ${e}`, "error");
+      }
+    },
+  });
+
+  // ─── /fork_last — fork from last session (branch, memory diwarisi) ───
+
+  pi.registerCommand("fork_last", {
+    description: "Branching dari session terakhir — history diwarisi, memory tetap.",
+    handler: async (_args, ctx) => {
+      const pk = projectKey(process.cwd());
+      const last = loadLastSessions()[pk];
+      if (!last || !last.sessionFile) {
+        ctx.ui.notify("Tidak ada session sebelumnya untuk project ini.", "warning");
+        return;
+      }
+
+      const cmd = `pi --fork "${last.sessionFile}" --session-dir ~/.pi/agent/sessions`;
+
+      ctx.ui.notify(
+        [
+          `Fork dari session ${last.sessionId.slice(0, 8)} (${last.messageCount} pesan):`,
+          "",
+          `  ${cmd}`,
+          "",
+          "Jalankan di terminal baru. Memory akan tetap sama",
+          "karena disimpan di file terpisah.",
+        ].join("\n"),
+        "info"
+      );
+    },
   });
 
   // ─── /session list ───
@@ -195,10 +322,12 @@ export default function (pi: ExtensionAPI) {
       });
 
       lines.push("Commands:");
-      lines.push(`  /session_show <id>     — show details`);
-      lines.push(`  /session_fork <id>     — fork session`);
-      lines.push(`  /session_resume <id>   — resume session`);
-      lines.push(`  /session_export <id>   — export to HTML`);
+      lines.push(`  /resume_last        — lanjut session terakhir (history penuh)`);
+      lines.push(`  /fork_last          — branching dari session terakhir`);
+      lines.push(`  /session_show <id>  — show details`);
+      lines.push(`  /session_fork <id>  — fork session`);
+      lines.push(`  /session_resume <id>— resume session`);
+      lines.push(`  /session_export <id>— export to HTML`);
 
       ctx.ui.notify(lines.join("\n"), "info");
     },
