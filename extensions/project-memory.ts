@@ -1,8 +1,10 @@
 /**
- * Senior Engineer Project Memory Extension v3
+ * Senior Engineer Project Memory Extension
  *
- * Combines structured 7-section project memory with Hermes-style
- * auto-learning, correction detection, failure memory, and session flush.
+ * Zero extra token burn: no LLM subprocess calls.
+ * Memory is saved ONLY via explicit `memory` tool calls,
+ * pattern-based correction detection (regex only, free),
+ * or manual /memory-update.
  *
  * Commands:
  * - /memory_show
@@ -23,9 +25,6 @@ const GLOBAL_MEMORY_DIR = path.join(os.homedir(), ".pi", "agent", "pi-hermes-mem
 const ENTRY_DELIMITER = "\n§\n";
 const MEMORY_CHAR_LIMIT = 5000;
 const USER_CHAR_LIMIT = 5000;
-const NUDGE_INTERVAL = 10;
-const NUDGE_TOOL_CALLS = 15;
-const FLUSH_MIN_TURNS = 6;
 
 const MEMORY_FILE = "MEMORY.md";
 const USER_FILE = "USER.md";
@@ -226,6 +225,11 @@ class MemoryStore {
     return this.userEntries.map((e) => this.stripMetadata(e));
   }
 
+  async clear(target: "memory" | "user" | "failure"): Promise<void> {
+    this.setEntries(target, []);
+    await this.saveToDisk(target);
+  }
+
   getFailureEntries(maxAgeDays = 7): string[] {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - maxAgeDays);
@@ -354,13 +358,6 @@ function getMessageText(msg: unknown, maxLength = 500): string | null {
 
 export default function (pi: ExtensionAPI) {
   const store = new MemoryStore();
-  let userTurnCount = 0;
-  let turnsSinceReview = 0;
-  let toolCallsSinceReview = 0;
-  let reviewInProgress = false;
-  let pendingCorrection = false;
-  let turnsSinceLastCorrection = 3;
-  let correctionInProgress = false;
 
   // ─── Load memory on session start ───
 
@@ -368,183 +365,15 @@ export default function (pi: ExtensionAPI) {
     await store.loadFromDisk();
   });
 
-  // ─── Track turns + detect corrections ───
+  // ─── Correction detection (pattern-based only, zero LLM) ───
 
   pi.on("message_end", async (event) => {
     if (event.message.role === "user") {
-      userTurnCount++;
       const text = getMessageText(event.message);
       if (text && isCorrection(text)) {
-        pendingCorrection = true;
+        await store.add("failure", `Correction: ${text}`);
       }
     }
-  });
-
-  // ─── Background review loop ───
-
-  pi.on("turn_end", async (event, ctx) => {
-    turnsSinceReview++;
-
-    try {
-      const msg = event.message;
-      if (msg?.role === "assistant") {
-        const content = msg?.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block && typeof block === "object" && block.type === "toolCall") {
-              toolCallsSinceReview++;
-            }
-          }
-        }
-      }
-    } catch {}
-
-    // Background review
-    if (!reviewInProgress && userTurnCount >= 3) {
-      const turnMet = turnsSinceReview >= NUDGE_INTERVAL;
-      const toolMet = toolCallsSinceReview >= NUDGE_TOOL_CALLS;
-      if (turnMet || toolMet) {
-        turnsSinceReview = 0;
-        toolCallsSinceReview = 0;
-        reviewInProgress = true;
-
-        let parts: string[] = [];
-        try {
-          const entries = ctx.sessionManager.getBranch();
-          for (const entry of entries) {
-            if (entry.type !== "message") continue;
-            const msg = entry.message;
-            const text = getMessageText(msg);
-            if (!text) continue;
-            const prefix = msg.role === "user" ? "[USER]" : "[ASSISTANT]";
-            parts.push(`${prefix}: ${text.slice(0, 300)}`);
-          }
-        } catch {}
-
-        if (parts.length >= 4) {
-          const currentMemory = store.getMemoryEntries().join("\n");
-          const currentUser = store.getUserEntries().join("\n");
-          const prompt = `Review this conversation for things worth saving to persistent memory:
-
-Current Memory:
-${currentMemory || "(empty)"}
-
-Current User Profile:
-${currentUser || "(empty)"}
-
-Conversation:
-${parts.slice(-20).join("\n\n")}
-
-Consider:
-1. User preferences, habits, personal details → save to 'user'
-2. Environment facts, project conventions, tool quirks → save to 'memory'
-3. Failures, what didn't work → save as failure with category
-
-If nothing worth saving, respond "Nothing to save."`;
-
-          const result = await pi.exec("pi", ["-p", "--no-session", prompt], {
-            signal: ctx.signal,
-            timeout: 30000,
-          }) as { code: number; stdout?: string; stderr?: string };
-
-          if (result.code === 0 && result.stdout) {
-            const output = result.stdout.trim();
-            if (output && !output.toLowerCase().includes("nothing to save")) {
-              ctx.ui.notify("💾 Memory auto-reviewed", "info");
-            }
-          }
-        }
-        reviewInProgress = false;
-      }
-    }
-
-    // Correction detection
-    if (pendingCorrection && turnsSinceLastCorrection >= 3 && !correctionInProgress) {
-      pendingCorrection = false;
-      turnsSinceLastCorrection = 0;
-      correctionInProgress = true;
-
-      try {
-        const entries = ctx.sessionManager.getBranch();
-        const parts: string[] = [];
-        for (const entry of entries) {
-          if (entry.type !== "message") continue;
-          const msg = entry.message;
-          const text = getMessageText(msg);
-          if (!text) continue;
-          const prefix = msg.role === "user" ? "[USER]" : "[ASSISTANT]";
-          parts.push(`${prefix}: ${text}`);
-        }
-
-        const recentParts = parts.slice(-6);
-        const currentMemory = store.getMemoryEntries().join("\n");
-        const currentUser = store.getUserEntries().join("\n");
-
-        const prompt = `The user just corrected you. Review and save to persistent memory.
-
-Current Memory:
-${currentMemory || "(empty)"}
-
-Current User Profile:
-${currentUser || "(empty)"}
-
-Recent Conversation:
-${recentParts.join("\n\n")}
-
-Priority:
-1. User preference ("don't do X", "always use Y instead")
-2. Wrong assumption you made
-3. Environment fact you got wrong
-
-If nothing to save, respond "Nothing to save."`;
-
-        const result = await pi.exec("pi", ["-p", "--no-session", prompt], {
-          signal: ctx.signal,
-          timeout: 30000,
-        }) as { code: number; stdout?: string; stderr?: string };
-
-        if (result.code === 0 && result.stdout) {
-          const output = result.stdout.trim();
-          if (output && !output.toLowerCase().includes("nothing to save")) {
-            ctx.ui.notify("🔧 Correction saved to memory", "info");
-          }
-        }
-      } catch {}
-      correctionInProgress = false;
-    }
-
-    if (!pendingCorrection) {
-      turnsSinceLastCorrection++;
-    }
-  });
-
-  // ─── Session flush ───
-
-  pi.on("session_before_compact", async (_event, ctx) => {
-    if (userTurnCount < FLUSH_MIN_TURNS) return;
-    let entries;
-    try {
-      entries = ctx.sessionManager.getBranch();
-    } catch {
-      return;
-    }
-    const parts: string[] = [];
-    for (const entry of entries) {
-      if (entry.type !== "message") continue;
-      const msg = entry.message;
-      const text = getMessageText(msg);
-      if (!text) continue;
-      parts.push(`${msg.role === "user" ? "[USER]" : "[ASSISTANT]"}: ${text}`);
-    }
-
-    const prompt = `[System: Session is being compressed. Save anything worth remembering — prioritize user preferences, corrections, and patterns.]\n\nConversation:\n${parts.slice(-30).join("\n\n")}`;
-
-    try {
-      await pi.exec("pi", ["-p", "--no-session", prompt], {
-        signal: ctx.signal,
-        timeout: 15000,
-      });
-    } catch {}
   });
 
   // ─── Inject memory into system prompt ───
@@ -702,45 +531,31 @@ If nothing to save, respond "Nothing to save."`;
   });
 
   pi.registerCommand("memory-consolidate", {
-    description: "Manually trigger memory consolidation to free up space",
-    handler: async (_args, ctx) => {
-      const memEntries = store.getMemoryEntries();
-      const userEntries = store.getUserEntries();
+    description: "Prune old memory entries to free up space (keeps newest entries, drops oldest). Usage: /memory-consolidate [keep=N]",
+    handler: async (args, ctx) => {
+      const keep = parseInt((args || "").match(/keep=(\d+)/)?.[1] ?? "", 10) || 10;
+      let removed = 0;
 
-      if (!memEntries.length && !userEntries.length) {
-        ctx.ui.notify("Memory is empty — nothing to consolidate.", "info");
-        return;
-      }
+      await store.loadFromDisk();
 
-      ctx.ui.notify("⏳ Consolidating memory...", "info");
-
-      const prompt = [
-        "The memory is at capacity. Consolidate by merging related entries, removing outdated ones, keeping the most important facts.",
-        "",
-        "--- Current Memory Entries ---",
-        memEntries.join("\n---\n"),
-        "",
-        "--- Current User Profile ---",
-        userEntries.join("\n---\n") || "(empty)",
-        "",
-        "Use the memory tool to make changes. Be aggressive about merging — less is more.",
-      ].join("\n");
-
-      try {
-        const result = await pi.exec("pi", ["-p", "--no-session", prompt], {
-          signal: ctx.signal,
-          timeout: 120000,
-        }) as { code: number; stdout?: string; stderr?: string };
-
-        if (result.code === 0) {
-          await store.loadFromDisk();
-          ctx.ui.notify("✅ Memory consolidated and reloaded", "info");
-        } else {
-          ctx.ui.notify("❌ Consolidation failed", "error");
+      for (const target of ["memory", "user"] as const) {
+        const entries = target === "user" ? store.getUserEntries() : store.getMemoryEntries();
+        if (entries.length > keep) {
+          const kept = entries.slice(entries.length - keep);
+          await store.clear(target);
+          for (const entry of kept) {
+            await store.add(target, entry);
+          }
+          removed += entries.length - keep;
         }
-      } catch {
-        ctx.ui.notify("❌ Consolidation failed", "error");
       }
+
+      ctx.ui.notify(
+        removed > 0
+          ? `🧹 Removed ${removed} old entries. Kept newest ${keep} per category.`
+          : `Nothing to prune (≤${keep} entries per category).`,
+        "info"
+      );
     },
   });
 }
