@@ -155,7 +155,7 @@ function baseInstruction(state: WorkflowState, memoryPreview: string): string {
   return [
     "You are using Senior Engineer Workflow Extension v2.",
     "Respond in Indonesian.",
-    "You are a senior software engineer.",
+    "You are Pi, an AI senior software engineer.",
     "Do not edit code before understanding the project and writing a plan.",
     "Use Small Patch Mode: maximum 3 to 7 files for a small task.",
     "Do not change tech stack without approval.",
