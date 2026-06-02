@@ -146,6 +146,12 @@ function baseInstruction(state: WorkflowState, memoryPreview: string): string {
     "Update project memory after meaningful work.",
     "Never store secrets in memory.",
     "",
+    "Decision Making:",
+    "When you encounter ambiguity or multiple valid approaches, do NOT guess.",
+    "Use the `senior_engineer_ask_decision` tool to present structured options.",
+    "Always include a clear recommendation marked with (Recommended).",
+    "After presenting options, stop and wait for the user's response before proceeding.",
+    "",
     `Mode: ${state.mode}`,
     `Project: ${state.projectPath}`,
     `Memory file: ${state.memoryFile}`,
@@ -692,6 +698,80 @@ export default function (pi: ExtensionAPI) {
       const memoryFile = workflow?.memoryFile || (await ensureMemoryFile(projectPath));
       await updateMemorySection(memoryFile, params.section, params.content);
       return { content: [{ type: "text", text: `Memory section "${params.section}" updated: ${memoryFile}` }], details: { memoryFile } };
+    },
+  });
+
+  const decisions: Map<string, { question: string; options: { label: string; description: string; recommended?: boolean }[] }> = new Map();
+
+  pi.registerCommand("decide", {
+    description: "Jawab pertanyaan dari senior_engineer_ask_decision. Usage: /decide <nomor>",
+    handler: async (args, ctx) => {
+      const num = parseInt((args || "").trim(), 10);
+      if (isNaN(num) || num < 1) {
+        ctx.ui.notify("Usage: /decide <nomor>", "error");
+        return;
+      }
+      if (decisions.size === 0) {
+        ctx.ui.notify("Tidak ada pertanyaan yang menunggu", "info");
+        return;
+      }
+      const [decisionId] = decisions.keys();
+      const decision = decisions.get(decisionId)!;
+      if (num > decision.options.length) {
+        ctx.ui.notify(`Hanya ada ${decision.options.length} pilihan (1-${decision.options.length})`, "error");
+        return;
+      }
+      const chosen = decision.options[num - 1];
+      decisions.clear();
+      pi.sendMessage({
+        customType: "senior-engineer-workflow",
+        display: true,
+        content: [
+          `**${decision.question}**`,
+          "",
+          `Pilihan: **${chosen.label}**`,
+          ...(chosen.recommended ? "\n_(Recommended)_" : []),
+        ].join("\n"),
+      });
+      ctx.ui.notify(`Memilih: ${chosen.label}`, "info");
+    },
+  });
+
+  pi.registerTool({
+    name: "senior_engineer_ask_decision",
+    label: "Ask User Decision",
+    description: "Present structured options to the user when facing ambiguity. Always include a clear recommendation marked with (Recommended). After presenting, wait for the user's response via /decide <number>.",
+    parameters: Type.Object({
+      question: Type.String(),
+      options: Type.Array(Type.Object({
+        label: Type.String({ description: "Short label (1-5 words)" }),
+        description: Type.String({ description: "Explanation of this option" }),
+        recommended: Type.Optional(Type.Boolean({ description: "Mark as recommended" })),
+      })),
+      context: Type.Optional(Type.String({ description: "Optional context for the decision" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const decisionId = `dec_${Date.now()}`;
+      decisions.set(decisionId, { question: params.question, options: params.options });
+
+      const formatted = [
+        "## " + params.question,
+        "",
+        ...params.options.map((opt, i) =>
+          `  ${i + 1}) **${opt.label}**${opt.recommended ? ' ⭐ (Recommended)' : ''}\n     ${opt.description}`
+        ),
+        "",
+        `Balas dengan: \`/decide <nomor>\` (1-${params.options.length})`,
+        ...(params.context ? [`\nKonteks: ${params.context}`] : []),
+      ].join("\n");
+
+      pi.sendMessage({
+        customType: "senior-engineer-workflow",
+        display: true,
+        content: formatted,
+      });
+
+      return { content: [{ type: "text", text: `Awaiting user decision for: ${params.question}. Stop and wait for their /decide response.` }] };
     },
   });
 
