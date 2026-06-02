@@ -7,30 +7,54 @@ Extensions ini harus di `~/.pi/agent/extensions/` biar otomatis ke-load sama Pi.
 ```bash
 mkdir -p ~/.pi/agent/extensions
 cp *.ts ~/.pi/agent/extensions/
+
+# Opsional: Codex tools (exec_command, apply_patch, image_generation, view_image)
+pi install npm:@howaboua/pi-codex-conversion
 ```
 
-Then restart Pi atau ketik `/reload` di dalem Pi.
+Lalu restart Pi atau ketik `/reload` di dalem Pi.
 
 ## Files
 
-| File | Size | Auto-loaded |
-|------|------|-------------|
-| `senior-engineer-workflow.ts` | 13 KB | Ya |
-| `project-init.ts` | 25 KB | Ya |
-| `task-delegator.ts` | 13 KB | Ya |
-| `project-memory.ts` | 4 KB | Ya |
-| `context-pack.ts` | 8 KB | Ya |
-| `docker-runner.ts` | 6 KB | Ya |
-| `review-gate.ts` | 4 KB | Ya |
+| File | Auto-loaded | Fungsi |
+|------|-------------|--------|
+| `senior-engineer-workflow.ts` | Ya | Core workflow: modes, git checkpoint, decision helper, ASCII mascot |
+| `project-init.ts` | Ya | Generate AGENTS.md |
+| `task-delegator.ts` | Ya | Spawn sub-agent untuk riset/review/plan |
+| `project-memory.ts` | Ya | Persistent memory + correction detection + memory tool |
+| `context-pack.ts` | Ya | Context pack: file tree + tech stack |
+| `docker-runner.ts` | Ya | Test/lint/build di Docker |
+| `review-gate.ts` | Ya | Structured code review (diff, security, UI, API, DB) |
+| `zz-identity-guard.ts` | Ya | Identity guard — re-assert Pi identity (loads LAST) |
 
 ## Uninstall
 
 Tinggal hapus file-nya:
 
 ```bash
-rm ~/.pi/agent/extensions/senior-engineer-workflow.ts
-# dst
+rm ~/.pi/agent/extensions/<nama-file>.ts
 ```
+
+Kalo mau remove codex-conversion juga:
+
+```bash
+pi remove npm:@howaboua/pi-codex-conversion
+```
+
+## Extension Loading Order
+
+Pi load extension dalam urutan alphabetical. Urutan ini penting karena
+`before_agent_start` event chain sesuai urutan load:
+
+1. `context-pack.ts`
+2. `docker-runner.ts`
+3. `project-init.ts`
+4. `project-memory.ts` — inject memory entries
+5. `review-gate.ts`
+6. `senior-engineer-workflow.ts` — inject persona + workflow instruction (TOP)
+7. `task-delegator.ts`
+8. (npm) `@howaboua/pi-codex-conversion` — inject Codex guidelines (MIDDLE)
+9. `zz-identity-guard.ts` — inject identity guard (BOTTOM, recency effect)
 
 ## Dependency
 
@@ -46,18 +70,11 @@ Kalo ada error `Cannot find module`, jalanin:
 pi -e /dev/null  # trigger re-load semua extensions
 ```
 
-## Extension Loading Order
+## Notes
 
-Pi load extension dalam urutan alphabetical. Urutan ini penting karena
-`before_agent_start` event chain sesuai urutan load:
-
-1. `context-pack.ts` — inject context pack ke system prompt
-2. `docker-runner.ts` — tambah tool test detection
-3. `project-init.ts` — register `/init` command
-4. `project-memory.ts` — inject memory ke system prompt
-5. `review-gate.ts` — register review commands
-6. `senior-engineer-workflow.ts` — inject workflow prompt, register workflow commands
-7. `task-delegator.ts` — register delegate tool & command
+- Memory extension **zero token burn** — semua operasi pake fs.write langsung, tanpa LLM subprocess.
+- Identity guard (`zz-`) dipastiin load paling akhir biar identity Pi tetap terjaga.
+- Codex-conversion optional; kalo gak diinstall, semua fitur workflow tetap jalan normal.
 
 ---
 *Extensions by ztrenggono*
