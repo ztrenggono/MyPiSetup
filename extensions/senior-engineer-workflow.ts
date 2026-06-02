@@ -216,6 +216,12 @@ function modeInstruction(state: WorkflowState, memoryPreview: string): string {
       "Call the tool separately for each section: Understanding, Tech Stack, Architecture, Commands, Risks.",
       "Also append a task history entry using `senior_engineer_workflow_memory_append`.",
       "Output sections: Project Understanding, Tech Stack, Architecture, Main Modules, User Flows, API or Routes, Database or Storage, Build and Test Commands, Deployment Notes, Known Risks, Memory Updated.",
+      "",
+      "Persistent Memory from this session:",
+      "After completing the teach, use the `memory` tool to save key user preferences and architectural insights:",
+      "- Add to 'user' every significant user preference or workflow habit discovered.",
+      "- Add to 'memory' key architectural decisions, gotchas, or patterns found.",
+      "These will auto-inject in future sessions — no need to re-teach.",
     ].join("\n");
   }
 
