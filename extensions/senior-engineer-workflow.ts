@@ -623,17 +623,26 @@ export default function (pi: ExtensionAPI) {
 
       updateStatus(ctx);
 
+      const modeIcon: Record<string, string> = {
+        teach: "📖", audit: "🔍", production: "🚀", fix: "🔧",
+        feature: "✨", refactor: "♻️", test: "🧪", memory: "🧠", plan: "📋", default: "⚡",
+      };
       pi.sendMessage({
         customType: "senior-engineer-workflow",
         display: true,
         content: [
-          "# Senior Engineer Workflow Started",
-          "",
-          `Mode: ${workflow.mode}`,
-          `Project: ${workflow.projectPath}`,
-          `Memory: ${workflow.memoryFile}`,
-          `Read-only: ${workflow.readOnly ? "yes" : "no"}`,
-          ...(workflow.checkpointHash ? [`Checkpoint: \`${workflow.checkpointHash}\``] : []),
+          `┏${"━".repeat(60)}┓`,
+          "┃" + "".padStart(60) + "┃",
+          "┃" + "  ╔══════════════════════════════════════════════╗".padEnd(61) + "┃",
+          "┃" + `  ║  ${modeIcon[workflow.mode] || "⚡"} SENIOR ENGINEER WORKFLOW v2${"".padStart(28)}║`.padEnd(61) + "┃",
+          "┃" + "  ╚══════════════════════════════════════════════╝".padEnd(61) + "┃",
+          "┃" + "".padStart(60) + "┃",
+          "┃" + `  Mode      : ${workflow.mode}${"".padStart(Math.max(0, 41 - workflow.mode.length))}┃`,
+          "┃" + `  Project   : ${path.basename(workflow.projectPath)}${"".padStart(Math.max(0, 41 - path.basename(workflow.projectPath).length))}┃`,
+          "┃" + `  Read-only : ${workflow.readOnly ? "yes" : "no"}${"".padStart(40)}┃`,
+          ...(workflow.checkpointHash ? [`┃  Checkpoint: ${workflow.checkpointHash.slice(0, 7)}${"".padStart(39)}┃`] : []),
+          "┃" + "".padStart(60) + "┃",
+          `┗${"━".repeat(60)}┛`,
           "",
           `Request: ${workflow.request || "-"}`,
         ].join("\n"),
@@ -755,20 +764,25 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, _ctx) => {
     if (!workflow?.active) return {};
-    const checkpointLine = workflow.checkpointHash ? `Checkpoint: ${workflow.checkpointHash} (use /restore to revert here)` : "";
+    const modeIcon: Record<string, string> = {
+      teach: "📖", audit: "🔍", production: "🚀", fix: "🔧",
+      feature: "✨", refactor: "♻️", test: "🧪", memory: "🧠", plan: "📋", default: "⚡",
+    };
+    const cp = workflow.checkpointHash ? `\n  Checkpoint: ${workflow.checkpointHash.slice(0, 7)}  (use /restore to revert here)` : "";
     const guidance = [
       "",
-      "---",
-      "SENIOR ENGINEER WORKFLOW ACTIVE",
-      `Mode: ${workflow.mode}`,
-      `Stage: ${workflow.stage}`,
-      `Project: ${workflow.projectPath}`,
-      `Memory: ${workflow.memoryFile}`,
-      `Read-only: ${workflow.readOnly ? "yes" : "no"}`,
-      ...(checkpointLine ? [checkpointLine] : []),
-      "Follow: understand -> plan -> small patch -> test -> review -> memory.",
-      "Never store secrets.",
-      "---",
+      `┏${"━".repeat(50)}┓`,
+      "┃" + "".padStart(50) + "┃",
+      "┃" + `  ${modeIcon[workflow.mode] || "⚡"} WORKFLOW: ${workflow.mode.toUpperCase()}${"".padStart(Math.max(0, 30 - workflow.mode.length))}┃`,
+      "┃" + `  Stage: ${workflow.stage}${"".padStart(Math.max(0, 35 - workflow.stage.length))}┃`,
+      "┃" + `  Read-only: ${workflow.readOnly ? "yes" : "no"}${"".padStart(36)}┃`,
+      ...(cp ? [`┃${cp}${"".padStart(49 - cp.length + 1)}┃`] : []),
+      "┃" + "".padStart(50) + "┃",
+      "┃" + "  understand → plan → patch → test → review → memory".padEnd(49) + "┃",
+      "┃" + "  Never store secrets.".padEnd(49) + "┃",
+      "┃" + "".padStart(50) + "┃",
+      `┗${"━".repeat(50)}┛`,
+      "",
     ].join("\n");
     return { systemPrompt: event.systemPrompt + guidance };
   });
