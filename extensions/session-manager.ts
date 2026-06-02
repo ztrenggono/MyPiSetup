@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs/promises";
+import * as fsSync from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
@@ -98,6 +99,44 @@ function relativeDate(iso: string): string {
 }
 
 export default function (pi: ExtensionAPI) {
+  // ─── Auto-save session on shutdown (Ctrl+C & /quit) ───
+
+  pi.on("session_shutdown", (event, ctx) => {
+    const now = new Date();
+    const dateStr = now.toISOString();
+    const reason = event.reason;
+    const summaryDir = path.join(os.homedir(), ".pi", "agent", "session-summaries");
+    try { fsSync.mkdirSync(summaryDir, { recursive: true }); } catch {}
+
+    try {
+      const entries = ctx.sessionManager.getBranch();
+      let userCount = 0;
+      let lastUser = "";
+
+      for (const entry of entries) {
+        if (entry.type !== "message") continue;
+        const msg = entry.message;
+        if (msg.role === "user") {
+          userCount++;
+          const text = extractText(msg.content);
+          if (text) lastUser = text.slice(0, 150);
+        }
+      }
+
+      const summary = [
+        `## Session ${now.toLocaleString("id-ID")}`,
+        `- Reason: ${reason}`,
+        `- CWD: ${process.cwd()}`,
+        `- Messages: ${userCount} user turns`,
+        `- Last: ${lastUser || "(none)"}`,
+        "",
+      ].join("\n") + "\n";
+
+      const summaryFile = path.join(summaryDir, `${now.toISOString().split("T")[0]}.md`);
+      fsSync.appendFileSync(summaryFile, `\n---\n\n${summary}`, "utf-8");
+    } catch {}
+  });
+
   // ─── /session list ───
 
   pi.registerCommand("session_list", {
