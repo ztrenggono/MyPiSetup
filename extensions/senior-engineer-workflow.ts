@@ -633,9 +633,9 @@ export default function (pi: ExtensionAPI) {
         content: [
           `┏${"━".repeat(60)}┓`,
           "┃" + "".padStart(60) + "┃",
-          "┃" + "  ╔══════════════════════════════════════════════╗".padEnd(61) + "┃",
-          "┃" + `  ║  ${modeIcon[workflow.mode] || "⚡"} SENIOR ENGINEER WORKFLOW v2${"".padStart(28)}║`.padEnd(61) + "┃",
-          "┃" + "  ╚══════════════════════════════════════════════╝".padEnd(61) + "┃",
+          "┃" + "          ╭──────────────────────╮".padEnd(61) + "┃",
+          "┃" + `         │  ${modeIcon[workflow.mode] || "⚡"}  SENIOR ENGINEER  │`.padEnd(61) + "┃",
+          "┃" + "          ╰──────────────────────╯".padEnd(61) + "┃",
           "┃" + "".padStart(60) + "┃",
           "┃" + `  Mode      : ${workflow.mode}${"".padStart(Math.max(0, 41 - workflow.mode.length))}┃`,
           "┃" + `  Project   : ${path.basename(workflow.projectPath)}${"".padStart(Math.max(0, 41 - path.basename(workflow.projectPath).length))}┃`,
@@ -768,20 +768,23 @@ export default function (pi: ExtensionAPI) {
       teach: "📖", audit: "🔍", production: "🚀", fix: "🔧",
       feature: "✨", refactor: "♻️", test: "🧪", memory: "🧠", plan: "📋", default: "⚡",
     };
-    const cp = workflow.checkpointHash ? `\n  Checkpoint: ${workflow.checkpointHash.slice(0, 7)}  (use /restore to revert here)` : "";
+    const cp = workflow.checkpointHash ? `\n  Checkpoint: ${workflow.checkpointHash.slice(0, 7)} (use /restore to revert)` : "";
     const guidance = [
       "",
-      `┏${"━".repeat(50)}┓`,
-      "┃" + "".padStart(50) + "┃",
-      "┃" + `  ${modeIcon[workflow.mode] || "⚡"} WORKFLOW: ${workflow.mode.toUpperCase()}${"".padStart(Math.max(0, 30 - workflow.mode.length))}┃`,
-      "┃" + `  Stage: ${workflow.stage}${"".padStart(Math.max(0, 35 - workflow.stage.length))}┃`,
-      "┃" + `  Read-only: ${workflow.readOnly ? "yes" : "no"}${"".padStart(36)}┃`,
-      ...(cp ? [`┃${cp}${"".padStart(49 - cp.length + 1)}┃`] : []),
-      "┃" + "".padStart(50) + "┃",
-      "┃" + "  understand → plan → patch → test → review → memory".padEnd(49) + "┃",
-      "┃" + "  Never store secrets.".padEnd(49) + "┃",
-      "┃" + "".padStart(50) + "┃",
-      `┗${"━".repeat(50)}┛`,
+      `┏${"━".repeat(52)}┓`,
+      "┃" + "".padStart(52) + "┃",
+      "┃" + `  ╭──────────────────────╮${"".padStart(27)}┃`,
+      "┃" + `  │  ${modeIcon[workflow.mode] || "⚡"}  ${workflow.mode.toUpperCase().padEnd(8)}         │${"".padStart(27)}┃`,
+      "┃" + `  ╰──────────────────────╯${"".padStart(27)}┃`,
+      "┃" + "".padStart(52) + "┃",
+      "┃" + `  Stage     : ${workflow.stage}${"".padStart(Math.max(0, 35 - workflow.stage.length))}┃`,
+      "┃" + `  Read-only : ${workflow.readOnly ? "yes" : "no"}${"".padStart(36)}┃`,
+      ...(cp ? [`┃${cp}${"".padStart(51 - cp.length + 1)}┃`] : []),
+      "┃" + "".padStart(52) + "┃",
+      "┃" + "  understand → plan → patch → test → review → memory".padEnd(51) + "┃",
+      "┃" + "  Never store secrets.".padEnd(51) + "┃",
+      "┃" + "".padStart(52) + "┃",
+      `┗${"━".repeat(52)}┛`,
       "",
     ].join("\n");
     return { systemPrompt: event.systemPrompt + guidance };
