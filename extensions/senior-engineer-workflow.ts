@@ -7,6 +7,7 @@
  * - /workflow_cancel
  * - /workflow_continue
  * - /workflow_checkpoint
+ * - /restore — revert code ke checkpoint (sebelum /workflow write mode dimulai)
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -14,6 +15,7 @@ import { Type } from "@sinclair/typebox";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
+import { execSync } from "node:child_process";
 
 const MEMORY_ROOT = path.join(os.homedir(), ".pi", "agent", "memories", "senior-engineer-workflow", "projects");
 const CHECKPOINT_ROOT = path.join(os.homedir(), ".pi", "agent", "checkpoints", "senior-engineer-workflow");
@@ -33,6 +35,7 @@ interface WorkflowState {
   readOnly: boolean;
   testsPassed: boolean;
   reviewIssues: string[];
+  checkpointHash?: string;
 }
 
 function slugifyProjectPath(projectPath: string): string {
@@ -118,6 +121,21 @@ async function appendMemory(memoryFile: string, title: string, body: string): Pr
     ["", "---", "", `## ${new Date().toISOString()} - ${title}`, "", body.trim(), ""].join("\n"),
     "utf-8"
   );
+}
+
+function gitCheckpoint(projectPath: string, mode: string): string | null {
+  try {
+    execSync("git rev-parse --git-dir", { cwd: projectPath, stdio: "pipe" });
+    const status = execSync("git status --porcelain", { cwd: projectPath, encoding: "utf-8" }).trim();
+    if (!status) return null;
+    const hash = execSync("git rev-parse HEAD", { cwd: projectPath, encoding: "utf-8" }).trim();
+    const label = `checkpoint: before /workflow ${mode} at ${new Date().toISOString().replace("T", " ").slice(0, 19)}`;
+    execSync(`git add -A`, { cwd: projectPath, stdio: "pipe" });
+    execSync(`git commit -m "${label}"`, { cwd: projectPath, stdio: "pipe" });
+    return hash;
+  } catch {
+    return null;
+  }
 }
 
 function parseArgs(args: string): { mode: WorkflowMode; request: string; readOnly: boolean } {
@@ -596,6 +614,13 @@ export default function (pi: ExtensionAPI) {
         reviewIssues: [],
       };
 
+      if (!parsed.readOnly) {
+        const checkpoint = gitCheckpoint(projectPath, parsed.mode);
+        if (checkpoint) {
+          workflow.checkpointHash = checkpoint;
+        }
+      }
+
       updateStatus(ctx);
 
       pi.sendMessage({
@@ -608,6 +633,7 @@ export default function (pi: ExtensionAPI) {
           `Project: ${workflow.projectPath}`,
           `Memory: ${workflow.memoryFile}`,
           `Read-only: ${workflow.readOnly ? "yes" : "no"}`,
+          ...(workflow.checkpointHash ? [`Checkpoint: \`${workflow.checkpointHash}\``] : []),
           "",
           `Request: ${workflow.request || "-"}`,
         ].join("\n"),
@@ -654,6 +680,28 @@ export default function (pi: ExtensionAPI) {
       updateStatus(ctx);
       workflow = null;
       ctx.ui.notify("Senior Engineer workflow cancelled", "info");
+    },
+  });
+
+  pi.registerCommand("restore", {
+    description: "Revert code ke checkpoint terakhir sebelum /workflow. Hati-hati: semua perubahan setelah checkpoint akan hilang.",
+    handler: async (_args, ctx) => {
+      if (!workflow?.checkpointHash) {
+        ctx.ui.notify("Tidak ada checkpoint tersedia. Hanya tersedia setelah /workflow fix/feature/refactor/test.", "error");
+        return;
+      }
+      const hash = workflow.checkpointHash;
+      try {
+        execSync(`git reset --hard ${hash}`, { cwd: workflow.projectPath, stdio: "pipe" });
+        ctx.ui.notify(`Code di-revert ke checkpoint ${hash.slice(0, 7)}`, "info");
+        pi.sendMessage({
+          customType: "senior-engineer-workflow",
+          display: true,
+          content: `Code di-revert ke checkpoint \`${hash}\`. Semua perubahan setelah checkpoint telah dihapus.`,
+        });
+      } catch {
+        ctx.ui.notify("Gagal restore — cek apakah ada konflik git", "error");
+      }
     },
   });
 
@@ -707,6 +755,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (event, _ctx) => {
     if (!workflow?.active) return {};
+    const checkpointLine = workflow.checkpointHash ? `Checkpoint: ${workflow.checkpointHash} (use /restore to revert here)` : "";
     const guidance = [
       "",
       "---",
@@ -716,6 +765,7 @@ export default function (pi: ExtensionAPI) {
       `Project: ${workflow.projectPath}`,
       `Memory: ${workflow.memoryFile}`,
       `Read-only: ${workflow.readOnly ? "yes" : "no"}`,
+      ...(checkpointLine ? [checkpointLine] : []),
       "Follow: understand -> plan -> small patch -> test -> review -> memory.",
       "Never store secrets.",
       "---",
