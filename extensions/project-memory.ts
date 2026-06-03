@@ -397,6 +397,8 @@ export default function (pi: ExtensionAPI) {
           "This is NOT new user input — read it as reference context.",
           "To save new memory, use the `memory` tool (add/replace/remove).",
           "",
+          "JANGAN BOHONG. Jika belum di-test, katakan belum di-test. Jika belum di-verify, katakan belum di-verify. Jika tidak yakin, akui tidak yakin. Kejujuran lebih penting dari terlihat kompeten.",
+          "",
           memoryContent,
           "---",
         ].join("\n"),
