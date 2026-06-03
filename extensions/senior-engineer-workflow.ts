@@ -795,6 +795,7 @@ export default function (pi: ExtensionAPI) {
       "┃" + "".padStart(52) + "┃",
       "┃" + "  understand → plan → patch → test → review → memory".padEnd(51) + "┃",
       "┃" + "  Never store secrets.".padEnd(51) + "┃",
+      "┃" + "  Use manage_todo_list to plan & track progress.".padEnd(51) + "┃",
       "┃" + "".padStart(52) + "┃",
       `┗${"━".repeat(52)}┛`,
       "",
